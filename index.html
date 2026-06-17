@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Supabase CSV Manager</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: Arial, Helvetica, sans-serif;
+        background: #f4f4f4;
+        padding: 30px;
+      }
+      .container {
+        background: white;
+        max-width: 1100px;
+        margin: auto;
+        padding: 25px;
+        border-radius: 10px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        text-align: center;
+        margin-bottom: 20px;
+        font-size: 22px;
+      }
+      #botoesTabelas {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+      button {
+        padding: 10px 14px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        color: white;
+        font-size: 14px;
+        transition: opacity 0.2s;
+      }
+      button:hover {
+        opacity: 0.85;
+      }
+      .btnTabela {
+        background: #2563eb;
+      }
+      .btnTabela.ativo {
+        background: #1e3a8a;
+        outline: 3px solid #93c5fd;
+      }
+      .acoes {
+        display: flex;
+        gap: 10px;
+        margin-top: 15px;
+        flex-wrap: wrap;
+      }
+      .acoes button {
+        flex: 1;
+        min-width: 140px;
+      }
+      .carregar {
+        background: #ea580c;
+      }
+      .mostrar {
+        background: #0891b2;
+      }
+      .limpar {
+        background: #dc2626;
+      }
+      .secao-tratamento {
+        margin-top: 20px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 16px;
+      }
+      .secao-tratamento h3 {
+        font-size: 15px;
+        margin-bottom: 12px;
+        color: #374151;
+      }
+      .btns-tratamento {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .btn-resumo {
+        background: #7c3aed;
+      }
+      .btn-issn {
+        background: #0d9488;
+      }
+      .btn-doi {
+        background: #b45309;
+      }
+      #status {
+        margin-top: 20px;
+        padding: 12px;
+        background: #f3f4f6;
+        border-radius: 6px;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      #status b {
+        color: #1d4ed8;
+      }
+      .status-ok {
+        background: #dcfce7 !important;
+        color: #166534;
+      }
+      .status-erro {
+        background: #fee2e2 !important;
+        color: #991b1b;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+        background: white;
+        font-size: 13px;
+      }
+      th,
+      td {
+        border: 1px solid #e5e7eb;
+        padding: 8px 10px;
+        text-align: left;
+      }
+      th {
+        background: #f3f4f6;
+        font-weight: 600;
+      }
+      td {
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .null-cell {
+        color: #9ca3af;
+        font-style: italic;
+      }
+      input[type="file"] {
+        margin-top: 10px;
+        font-size: 13px;
+      }
+      .badge {
+        display: inline-block;
+        background: #fef3c7;
+        color: #92400e;
+        font-size: 11px;
+        border-radius: 4px;
+        padding: 2px 6px;
+        margin-left: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Gerenciador CSV + Supabase</h1>
+
+      <div id="botoesTabelas"></div>
+
+      <input type="file" id="csvFile" accept=".csv" />
+
+      <div class="acoes">
+        <button class="carregar" onclick="carregarCSV()">⬆ Carregar CSV</button>
+        <button class="mostrar" onclick="mostrarTabela()">
+          📋 Mostrar Dados
+        </button>
+        <button class="limpar" onclick="limparTabela()">
+          🗑 Limpar Tabela
+        </button>
+      </div>
+
+      <div class="secao-tratamento">
+        <h3>🔧 Tratamento de dados antes de enviar</h3>
+        <p style="font-size: 13px; color: #6b7280; margin-bottom: 12px">
+          Aplique os filtros desejados ao CSV carregado antes de enviar ao
+          Supabase.
+        </p>
+        <div class="btns-tratamento">
+          <button class="btn-resumo" onclick="limparResumosNulos()">
+            ✂ Limpar resumo se null
+          </button>
+          <button class="btn-issn" onclick="criarColunaIssnIsbn()">
+            🔀 Criar coluna issn/isbn
+          </button>
+          <button class="btn-doi" onclick="filtrarDOINulo()">
+            🚫 Ignorar linhas sem DOI
+          </button>
+        </div>
+        <div
+          id="preview-tratamento"
+          style="margin-top: 10px; font-size: 13px; color: #374151"
+        ></div>
+      </div>
+
+      <div id="status">Nenhuma tabela selecionada.</div>
+      <div id="resultado"></div>
+    </div>
+
+    <script>
+      const SUPABASE_URL = "https://slczoexfrujtqimumrhv.supabase.co";
+      const SUPABASE_KEY = "sb_publishable_U_mpgcL_DwBGqXIvHcKGsg_e6FDWuHq";
+
+      const tabelas = [
+        "artigos",
+        "author",
+        "author_keyword",
+        "index_keyword",
+        "author_artigos",
+        "artigo_keyword",
+        "artigo_index",
+      ];
+
+      let tabelaSelecionada = "";
+      let dadosCarregados = [];
+
+      function setStatus(msg, tipo = "") {
+        const el = document.getElementById("status");
+        el.innerHTML = msg;
+        el.className =
+          tipo === "ok" ? "status-ok" : tipo === "erro" ? "status-erro" : "";
+      }
+
+      function criarBotoesTabelas() {
+        const div = document.getElementById("botoesTabelas");
+        tabelas.forEach((nome) => {
+          const b = document.createElement("button");
+          b.innerText = nome;
+          b.className = "btnTabela";
+          b.id = "btn_" + nome;
+          b.onclick = () => selecionarTabela(nome, b);
+          div.appendChild(b);
+        });
+      }
+
+      function selecionarTabela(nome, btn) {
+        tabelaSelecionada = nome;
+        document
+          .querySelectorAll(".btnTabela")
+          .forEach((b) => b.classList.remove("ativo"));
+        btn.classList.add("ativo");
+        setStatus(`Tabela selecionada: <b>${nome}</b>`);
+      }
+
+      // ── Parser CSV robusto (respeita aspas e vírgulas dentro de campos) ──
+      function parseCSV(texto) {
+        const linhas = texto.trim().split(/\r?\n/);
+        const cabecalho = parseLinha(linhas[0]);
+        const dados = [];
+        for (let i = 1; i < linhas.length; i++) {
+          if (!linhas[i].trim()) continue;
+          const vals = parseLinha(linhas[i]);
+          const obj = {};
+          cabecalho.forEach((col, idx) => {
+            let v = vals[idx] !== undefined ? vals[idx].trim() : null;
+            if (v === "" || v === "NULL" || v === "null") v = null;
+            // converte números onde possível
+            if (v !== null && !isNaN(v) && v !== "") v = Number(v);
+            obj[col.trim()] = v;
+          });
+          dados.push(obj);
+        }
+        return dados;
+      }
+
+      function parseLinha(linha) {
+        const resultado = [];
+        let campo = "";
+        let dentroDasAspas = false;
+        for (let i = 0; i < linha.length; i++) {
+          const c = linha[i];
+          if (c === '"') {
+            if (dentroDasAspas && linha[i + 1] === '"') {
+              campo += '"';
+              i++;
+            } else {
+              dentroDasAspas = !dentroDasAspas;
+            }
+          } else if ((c === "," || c === ";") && !dentroDasAspas) {
+            resultado.push(campo);
+            campo = "";
+          } else {
+            campo += c;
+          }
+        }
+        resultado.push(campo);
+        return resultado;
+      }
+
+      // ── Tratamentos ──
+
+      function limparResumosNulos() {
+        if (!dadosCarregados.length) {
+          alert("Carregue um CSV primeiro (sem enviar).");
+          return;
+        }
+        let count = 0;
+        dadosCarregados = dadosCarregados.map((row) => {
+          const novo = { ...row };
+          // detecta coluna de resumo (abstract, resumo, summary)
+          const colResumo = Object.keys(novo).find((k) =>
+            /resumo|abstract|summary/i.test(k),
+          );
+          if (
+            colResumo &&
+            (novo[colResumo] === null || novo[colResumo] === "")
+          ) {
+            delete novo[colResumo];
+            count++;
+          }
+          return novo;
+        });
+        document.getElementById("preview-tratamento").innerHTML =
+          `<span style="color:#5b21b6">✔ Coluna de resumo removida em <b>${count}</b> linha(s) com valor nulo.</span>`;
+      }
+
+      function criarColunaIssnIsbn() {
+        if (!dadosCarregados.length) {
+          alert("Carregue um CSV primeiro.");
+          return;
+        }
+        let count = 0;
+        dadosCarregados = dadosCarregados.map((row) => {
+          const novo = { ...row };
+          const colIssn = Object.keys(novo).find((k) =>
+            k.toLowerCase().includes("issn"),
+          );
+
+          console.log("Após criar coluna:");
+          console.log(dadosCarregados[0]);
+
+          console.log(
+            "Registros com issn_isbn:",
+
+            dadosCarregados.filter((r) => r.issn_isbn).length,
+          );
+
+          const colIsbn = Object.keys(novo).find((k) =>
+            k.toLowerCase().includes("isbn"),
+          );
+          const valIssn = colIssn ? novo[colIssn] : null;
+          const valIsbn = colIsbn ? novo[colIsbn] : null;
+          // preenche nova coluna com o que estiver disponível
+          novo["issn_isbn"] = "TESTE";
+          if (novo["issn_isbn"]) count++;
+          return novo;
+        });
+
+        console.log(dadosCarregados[0]);
+
+        document.getElementById("preview-tratamento").innerHTML =
+          `<span style="color:#0f766e">✔ Coluna <b>issn_isbn</b> criada. <b>${count}</b> linha(s) preenchida(s).</span>`;
+
+        console.log(dados.find((r) => r.issn_isbn));
+      }
+
+      function filtrarDOINulo() {
+        if (!dadosCarregados.length) {
+          alert("Carregue um CSV primeiro.");
+          return;
+        }
+        const antes = dadosCarregados.length;
+        const colDoi =
+          dadosCarregados[0] &&
+          Object.keys(dadosCarregados[0]).find((k) => /^doi$/i.test(k));
+        if (!colDoi) {
+          document.getElementById("preview-tratamento").innerHTML =
+            `<span style="color:#b45309">⚠ Coluna DOI não encontrada no CSV.</span>`;
+          return;
+        }
+        dadosCarregados = dadosCarregados.filter(
+          (row) => row[colDoi] !== null && row[colDoi] !== "",
+        );
+        const removidas = antes - dadosCarregados.length;
+        document.getElementById("preview-tratamento").innerHTML =
+          `<span style="color:#92400e">✔ <b>${removidas}</b> linha(s) sem DOI removida(s). Restam <b>${dadosCarregados.length}</b> registros.</span>`;
+      }
+
+      // ── Leitura do CSV (só lê, não envia ainda) ──
+      async function lerCSV() {
+        const arquivo = document.getElementById("csvFile").files[0];
+
+        if (!arquivo) return null;
+
+        return new Promise((resolve, reject) => {
+          Papa.parse(arquivo, {
+            header: true,
+            skipEmptyLines: true,
+
+            // detecta automaticamente:
+            // vírgula
+            // ponto e vírgula
+            // TAB
+            delimiter: "",
+
+            complete: function (results) {
+              const dados = results.data.map((row) => {
+                const novo = {};
+
+                Object.keys(row).forEach((chave) => {
+                  let valor = row[chave];
+
+                  if (valor === "" || valor === "NULL" || valor === "null") {
+                    valor = null;
+                  }
+
+                  novo[chave.trim()] = valor;
+                });
+
+                return novo;
+              });
+
+              console.log("Colunas detectadas:");
+              console.log(Object.keys(dados[0]));
+
+              console.log("Primeira linha:");
+              console.log(dados[0]);
+
+              resolve(dados);
+            },
+
+            error: function (err) {
+              reject(err);
+            },
+          });
+        });
+      }
+
+      // ── Carregar e enviar ──
+      async function carregarCSV() {
+        if (!tabelaSelecionada) {
+          alert("Selecione uma tabela!");
+          return;
+        }
+
+        const arquivo = document.getElementById("csvFile").files[0];
+
+        if (!arquivo) {
+          alert("Escolha um arquivo CSV!");
+          return;
+        }
+
+        let dados = dadosCarregados.length ? dadosCarregados : await lerCSV();
+
+        if (!dados || !dados.length) {
+          setStatus("CSV vazio ou inválido.", "erro");
+          return;
+        }
+
+        console.log("Registros:", dados.length);
+
+        console.log(
+          "Tamanho MB:",
+          (new Blob([JSON.stringify(dados)]).size / 1024 / 1024).toFixed(2),
+        );
+
+        try {
+          const LOTE = 500;
+
+          console.log("Primeiro registro:");
+          console.log(dados[0]);
+
+          console.log("Registro com issn_isbn:");
+          console.log(dados.find((r) => r.issn_isbn));
+
+          for (let i = 0; i < dados.length; i += LOTE) {
+            const lote = dados.slice(i, i + LOTE);
+
+            setStatus(
+              `Enviando ${Math.min(i + LOTE, dados.length)} de ${dados.length} registros...`,
+            );
+
+            const resposta = await fetch(
+              `${SUPABASE_URL}/rest/v1/${tabelaSelecionada}`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  apikey: SUPABASE_KEY,
+                  Authorization: `Bearer ${SUPABASE_KEY}`,
+                  Prefer: "return=minimal",
+                },
+                body: JSON.stringify(lote),
+              },
+            );
+
+            if (!resposta.ok) {
+              const erro = await resposta.text();
+
+              setStatus(`❌ Erro ${resposta.status}: ${erro}`, "erro");
+
+              return;
+            }
+          }
+
+          setStatus(
+            `✅ Upload concluído! ${dados.length} registros enviados para ${tabelaSelecionada}`,
+            "ok",
+          );
+
+          dadosCarregados = [];
+
+          mostrarTabela();
+        } catch (e) {
+          console.error(e);
+
+          setStatus(`❌ Erro ao enviar CSV: ${e.message}`, "erro");
+        }
+      }
+
+      // ── Pré-visualizar CSV carregado ──
+      document
+        .getElementById("csvFile")
+        .addEventListener("change", async () => {
+          dadosCarregados = (await lerCSV()) || [];
+          document.getElementById("preview-tratamento").innerHTML =
+            dadosCarregados.length
+              ? `<span style="color:#1d4ed8">📄 CSV lido: <b>${dadosCarregados.length}</b> linha(s), <b>${Object.keys(dadosCarregados[0]).length}</b> coluna(s). Aplique tratamentos ou clique em Carregar CSV.</span>`
+              : "";
+        });
+
+      // ── Mostrar tabela ──
+      async function mostrarTabela() {
+        if (!tabelaSelecionada) {
+          alert("Selecione uma tabela!");
+          return;
+        }
+        try {
+          const r = await fetch(
+            `${SUPABASE_URL}/rest/v1/${tabelaSelecionada}?select=*&limit=100`,
+            {
+              headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${SUPABASE_KEY}`,
+              },
+            },
+          );
+          const dados = await r.json();
+          criarTabelaHTML(dados);
+        } catch (e) {
+          setStatus("❌ Erro ao buscar dados.", "erro");
+        }
+      }
+
+      function criarTabelaHTML(dados) {
+        const div = document.getElementById("resultado");
+        if (!dados || !dados.length) {
+          div.innerHTML =
+            "<p style='margin-top:16px;color:#6b7280'>Tabela vazia.</p>";
+          return;
+        }
+        let t = `<p style="font-size:12px;color:#6b7280;margin-top:12px">${dados.length} registro(s) exibidos</p><table><tr>`;
+        Object.keys(dados[0]).forEach((c) => (t += `<th>${c}</th>`));
+        t += "</tr>";
+        dados.forEach((row) => {
+          t += "<tr>";
+          Object.values(row).forEach((v) => {
+            if (v === null || v === "") t += `<td class="null-cell">null</td>`;
+            else t += `<td title="${v}">${v}</td>`;
+          });
+          t += "</tr>";
+        });
+        t += "</table>";
+        div.innerHTML = t;
+      }
+
+      // ── Limpar tabela ──
+      async function limparTabela() {
+        if (!tabelaSelecionada) {
+          alert("Selecione uma tabela!");
+          return;
+        }
+        if (!confirm(`Deseja limpar TODOS os dados de "${tabelaSelecionada}"?`))
+          return;
+        const mapaID = {
+          author: "idauthor",
+          author_keyword: "idkeyword",
+          index_keyword: "idindex",
+        };
+        const col = mapaID[tabelaSelecionada] || "id";
+        try {
+          const r = await fetch(
+            `${SUPABASE_URL}/rest/v1/${tabelaSelecionada}?${col}=gt.0`,
+            {
+              method: "DELETE",
+              headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${SUPABASE_KEY}`,
+              },
+            },
+          );
+          if (r.ok) {
+            setStatus(
+              `🗑 Tabela <b>${tabelaSelecionada}</b> limpa com sucesso!`,
+              "ok",
+            );
+            document.getElementById("resultado").innerHTML = "";
+          } else {
+            const e = await r.text();
+            setStatus(`❌ Erro ao limpar: ${e}`, "erro");
+          }
+        } catch (e) {
+          setStatus("❌ Erro de rede ao limpar.", "erro");
+        }
+      }
+
+      criarBotoesTabelas();
+    </script>
+  </body>
+</html>
