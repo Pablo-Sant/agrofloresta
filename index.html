@@ -322,44 +322,39 @@
       }
 
       function criarColunaIssnIsbn() {
-        if (!dadosCarregados.length) {
-          alert("Carregue um CSV primeiro.");
-          return;
-        }
-        let count = 0;
-        dadosCarregados = dadosCarregados.map((row) => {
-          const novo = { ...row };
-          const colIssn = Object.keys(novo).find((k) =>
-            k.toLowerCase().includes("issn"),
-          );
+  if (!dadosCarregados.length) {
+    alert("Carregue um CSV primeiro.");
+    return;
+  }
+  let count = 0;
+  dadosCarregados = dadosCarregados.map((row) => {
+    const novo = { ...row };
+    const valIssn = novo["ISSN"] ?? null;
+    const valIsbn = novo["ISBN"] ?? null;
 
-          console.log("Após criar coluna:");
-          console.log(dadosCarregados[0]);
+    if (!valIssn && valIsbn) {
+      // só tem ISBN
+      novo["issn_isbn"] = valIsbn;
+      novo["ISSN"] = null;
+      novo["ISBN"] = null;
+      count++;
+    } else if (valIssn && !valIsbn) {
+      // só tem ISSN
+      novo["issn_isbn"] = valIssn;
+      novo["ISSN"] = null;
+      novo["ISBN"] = null;
+      count++;
+    } else {
+      // tem os dois ou nenhum, não faz nada
+      novo["issn_isbn"] = null;
+    }
 
-          console.log(
-            "Registros com issn_isbn:",
+    return novo;
+  });
 
-            dadosCarregados.filter((r) => r.issn_isbn).length,
-          );
-
-          const colIsbn = Object.keys(novo).find((k) =>
-            k.toLowerCase().includes("isbn"),
-          );
-          const valIssn = colIssn ? novo[colIssn] : null;
-          const valIsbn = colIsbn ? novo[colIsbn] : null;
-          // preenche nova coluna com o que estiver disponível
-          novo["issn_isbn"] = "TESTE";
-          if (novo["issn_isbn"]) count++;
-          return novo;
-        });
-
-        console.log(dadosCarregados[0]);
-
-        document.getElementById("preview-tratamento").innerHTML =
-          `<span style="color:#0f766e">✔ Coluna <b>issn_isbn</b> criada. <b>${count}</b> linha(s) preenchida(s).</span>`;
-
-        console.log(dados.find((r) => r.issn_isbn));
-      }
+  document.getElementById("preview-tratamento").innerHTML =
+    `<span style="color:#0f766e">✔ Coluna <b>issn_isbn</b> criada. <b>${count}</b> linha(s) preenchida(s).</span>`;
+}
 
       function filtrarDOINulo() {
         if (!dadosCarregados.length) {
