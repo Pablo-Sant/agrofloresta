@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Idioma de Publicação</title>
+<style>
+body{font-family:Arial,sans-serif;background:#f0f2f5;margin:0}
+header{background:#1a1a2e;color:#fff;padding:16px 30px}
+.container{max-width:1000px;margin:24px auto;background:#fff;padding:24px;border-radius:10px}
+.row{display:flex;align-items:center;gap:12px;margin:10px 0}
+.name{width:120px}
+.track{flex:1;height:10px;background:#eee;border-radius:5px;overflow:hidden}
+.fill{height:100%;background:#2F69B0}
+.value{width:40px;text-align:right;font-weight:bold}
+.pct{width:55px;text-align:right;color:#666}
+</style>
+</head>
+<body>
+<header><h2>Dashboard Bibliométrico — Idioma de Publicação</h2></header>
+<div class="container">
+<h3>Idioma de Publicação</h3>
+<p>Distribuição dos artigos por língua original.</p>
+<div id="idiomas"></div>
+</div>
+<script>
+const SUPABASE_URL="https://slczoexfrujtqimumrhv.supabase.co";
+const SUPABASE_KEY="sb_publishable_U_mpgcL_DwBGqXIvHcKGsg_e6FDWuHq";
+const cores=["#2F69B0","#D9480F","#2B8A3E","#E9A000","#7048E8","#495057"];
+async function buscarTodos(){
+ let todos=[],from=0,PAGE=1000;
+ while(true){
+  const r=await fetch(`${SUPABASE_URL}/rest/v1/artigos?select=id,"Language of Original Document"&limit=${PAGE}&offset=${from}`,{headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`}});
+  const p=await r.json();
+  if(!p.length)break;
+  todos=todos.concat(p); from+=PAGE; if(p.length<PAGE)break;
+ }
+ return todos;
+}
+(async()=>{
+ const arts=await buscarTodos();
+ const total=arts.length,c={};
+ arts.forEach(a=>{const l=a["Language of Original Document"]; if(l)c[l]=(c[l]||0)+1;});
+ const arr=Object.entries(c).sort((a,b)=>b[1]-a[1]); const max=arr[0]?.[1]||1;
+ const el=document.getElementById("idiomas");
+ arr.forEach(([n,q],i)=>{
+  const pct=(q/total*100).toFixed(1);
+  el.innerHTML+=`<div class="row"><div class="name">${n}</div><div class="track"><div class="fill" style="width:${q/max*100}%;background:${cores[i%cores.length]}"></div></div><div class="value">${q}</div><div class="pct">${pct}%</div></div>`;
+ });
+})();
+</script>
+</body>
+</html>
