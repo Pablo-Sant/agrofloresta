@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Publicações por Ano</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f2f5; color: #1a1a2e; }
+
+    header {
+      background: #1a1a2e;
+      padding: 16px 30px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { font-size: 18px; color: #fff; font-weight: 700; }
+    header h1 span { color: #e85d04; font-style: italic; }
+    header .meta { font-size: 11px; color: #9ca3af; letter-spacing: 1px; text-transform: uppercase; }
+
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin: 16px 30px;
+      padding: 7px 14px;
+      background: #1a1a2e;
+      color: #fff;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 13px;
+      transition: opacity 0.2s;
+    }
+    .back-btn:hover { opacity: 0.8; }
+
+    .section-label {
+      margin: 0 30px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #6b7280;
+    }
+    .section-label::before {
+      content: '';
+      display: inline-block;
+      width: 28px;
+      height: 3px;
+      background: #e85d04;
+      border-radius: 2px;
+    }
+
+    .container { padding: 0 30px 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+    @media (max-width: 768px) { .container { grid-template-columns: 1fr; } }
+
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 24px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .card.full { grid-column: 1 / -1; }
+
+    .card-title { font-size: 16px; font-weight: 700; color: #1a1a2e; margin-bottom: 4px; }
+    .card-sub { font-size: 12px; color: #9ca3af; margin-bottom: 20px; }
+
+    /* Gráfico de barras */
+    .chart-wrap {
+      position: relative;
+      overflow-x: auto;
+    }
+    .chart {
+      display: flex;
+      align-items: flex-end;
+      gap: 6px;
+      height: 200px;
+      padding-bottom: 30px;
+      min-width: 400px;
+    }
+    .bar-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1;
+      min-width: 28px;
+      position: relative;
+    }
+    .bar-group .bar {
+      width: 100%;
+      background: #e85d04;
+      border-radius: 3px 3px 0 0;
+      transition: opacity 0.2s;
+      cursor: pointer;
+      position: relative;
+    }
+    .bar-group .bar:hover { opacity: 0.8; }
+    .bar-group .bar-label {
+      font-size: 9px;
+      color: #6b7280;
+      margin-top: 6px;
+      transform: rotate(-45deg);
+      white-space: nowrap;
+    }
+    .bar-group .bar-val {
+      font-size: 10px;
+      color: #1a1a2e;
+      font-weight: 700;
+      position: absolute;
+      top: -18px;
+      width: 100%;
+      text-align: center;
+    }
+
+    /* Linha acumulada */
+    .chart-svg-wrap {
+      position: relative;
+      overflow-x: auto;
+    }
+
+    /* Tabela resumo */
+    .summary-table { width: 100%; border-collapse: collapse; }
+    .summary-table th {
+      font-size: 10px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #6b7280;
+      padding: 8px 10px;
+      text-align: left;
+      border-bottom: 2px solid #1a1a2e;
+    }
+    .summary-table th.right { text-align: right; }
+    .summary-table td {
+      padding: 9px 10px;
+      font-size: 13px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .summary-table tr:hover td { background: #f9fafb; }
+    .summary-table .year { font-weight: 700; color: #1a1a2e; }
+    .summary-table .n { text-align: right; font-weight: 700; color: #e85d04; }
+    .summary-table .pct { text-align: right; color: #6b7280; font-size: 12px; }
+
+    .bar-h-wrap { margin-bottom: 10px; }
+    .bar-h-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .bar-h-year { font-size: 12px; font-weight: 700; color: #1a1a2e; min-width: 36px; }
+    .bar-h-track { flex: 1; background: #f3f4f6; border-radius: 4px; height: 18px; overflow: hidden; }
+    .bar-h-fill { height: 18px; border-radius: 4px; background: #e85d04; }
+    .bar-h-n { font-size: 12px; font-weight: 700; color: #1a1a2e; min-width: 24px; text-align: right; }
+
+    #loading {
+      text-align: center;
+      padding: 60px;
+      color: #6b7280;
+      font-size: 14px;
+      grid-column: 1 / -1;
+    }
+    .spinner {
+      display: inline-block;
+      width: 32px;
+      height: 32px;
+      border: 3px solid #e5e7eb;
+      border-top-color: #e85d04;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .status-bar {
+      background: #1a1a2e;
+      color: #9ca3af;
+      font-size: 11px;
+      padding: 6px 30px;
+      letter-spacing: 1px;
+    }
+    .status-bar span { color: #e85d04; font-weight: 700; }
+
+    .legend {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: #6b7280;
+    }
+    .legend-item { display: flex; align-items: center; gap: 6px; }
+    .legend-dot { width: 12px; height: 12px; border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Dashboard <span>Bibliométrico</span> — Agroforestry</h1>
+  <div class="meta" id="header-meta">Carregando...</div>
+</header>
+
+<a href="index.html" class="back-btn">← Voltar ao Gerenciador</a>
+
+<div class="section-label">Produção Temporal</div>
+
+<div class="container">
+  <div id="loading">
+    <div class="spinner"></div><br>Buscando dados do Supabase...
+  </div>
+
+  <div class="card full" id="card-barras" style="display:none">
+    <div class="card-title">Publicações por Ano</div>
+    <div class="card-sub" id="sub-barras">Distribuição anual de artigos</div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#e85d04"></div> Publicações</div>
+    </div>
+    <div class="chart-wrap">
+      <div class="chart" id="chart-barras"></div>
+    </div>
+  </div>
+
+  <div class="card" id="card-barh" style="display:none">
+    <div class="card-title">Ranking por Ano</div>
+    <div class="card-sub">Anos com maior produção</div>
+    <div id="barh-container"></div>
+  </div>
+
+  <div class="card" id="card-tabela" style="display:none">
+    <div class="card-title">Tabela Resumo</div>
+    <div class="card-sub">Total de publicações por ano</div>
+    <div style="max-height:360px;overflow-y:auto">
+      <table class="summary-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Ano</th>
+            <th class="right">N</th>
+            <th class="right">%</th>
+          </tr>
+        </thead>
+        <tbody id="tabela-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="status-bar" id="status-bar">Aguardando dados...</div>
+
+<script>
+  const SUPABASE_URL = "https://slczoexfrujtqimumrhv.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_U_mpgcL_DwBGqXIvHcKGsg_e6FDWuHq";
+
+  async function buscarTodos() {
+    let todos = [];
+    let from = 0;
+    const PAGE = 1000;
+    while (true) {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/artigos?select=id,"Year"&limit=${PAGE}&offset=${from}`,
+        { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+      );
+      const page = await r.json();
+      if (!page.length) break;
+      todos = todos.concat(page);
+      from += PAGE;
+      if (page.length < PAGE) break;
+    }
+    return todos;
+  }
+
+  async function init() {
+    try {
+      const artigos = await buscarTodos();
+      const total = artigos.length;
+
+      // Contar por ano
+      const contagem = {};
+      for (const art of artigos) {
+        const ano = art["Year"];
+        if (!ano) continue;
+        contagem[ano] = (contagem[ano] || 0) + 1;
+      }
+
+      const anos = Object.keys(contagem).map(Number).sort((a,b) => a - b);
+      const minAno = anos[0];
+      const maxAno = anos[anos.length - 1];
+      const maxVal = Math.max(...Object.values(contagem));
+
+      document.getElementById("header-meta").textContent =
+        `SCOPUS · ${total} ARTIGOS · ${minAno}–${maxAno}`;
+      document.getElementById("sub-barras").textContent =
+        `${minAno}–${maxAno} · distribuição anual`;
+      document.getElementById("status-bar").innerHTML =
+        `Base: <span>${total}</span> artigos · período <span>${minAno}–${maxAno}</span> · <span>${anos.length}</span> anos com publicações`;
+
+      // Gráfico de barras verticais
+      const chartEl = document.getElementById("chart-barras");
+      for (const ano of anos) {
+        const n = contagem[ano];
+        const h = Math.max((n / maxVal) * 160, 4);
+        const div = document.createElement("div");
+        div.className = "bar-group";
+        div.innerHTML = `
+          <div class="bar" style="height:${h}px" title="${ano}: ${n} artigos">
+            <div class="bar-val">${n}</div>
+          </div>
+          <div class="bar-label">${ano}</div>
+        `;
+        chartEl.appendChild(div);
+      }
+
+      // Barras horizontais (top anos)
+      const rankAnos = [...anos].sort((a,b) => contagem[b] - contagem[a]).slice(0, 10);
+      const barhEl = document.getElementById("barh-container");
+      const maxH = contagem[rankAnos[0]];
+      for (const ano of rankAnos) {
+        const n = contagem[ano];
+        const pct = (n / maxH * 100).toFixed(0);
+        const div = document.createElement("div");
+        div.className = "bar-h-row";
+        div.innerHTML = `
+          <div class="bar-h-year">${ano}</div>
+          <div class="bar-h-track">
+            <div class="bar-h-fill" style="width:${pct}%"></div>
+          </div>
+          <div class="bar-h-n">${n}</div>
+        `;
+        barhEl.appendChild(div);
+      }
+
+      // Tabela
+      const tbody = document.getElementById("tabela-body");
+      const anosDesc = [...anos].sort((a,b) => b - a);
+      anosDesc.forEach((ano, i) => {
+        const n = contagem[ano];
+        const pct = ((n / total) * 100).toFixed(1);
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td style="color:#9ca3af;font-size:12px">${i+1}</td>
+          <td class="year">${ano}</td>
+          <td class="n">${n}</td>
+          <td class="pct">${pct}%</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById("loading").style.display = "none";
+      document.getElementById("card-barras").style.display = "block";
+      document.getElementById("card-barh").style.display = "block";
+      document.getElementById("card-tabela").style.display = "block";
+
+    } catch (e) {
+      document.getElementById("loading").innerHTML = `❌ Erro ao carregar dados: ${e.message}`;
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>

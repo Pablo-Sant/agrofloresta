@@ -157,6 +157,39 @@
         padding: 2px 6px;
         margin-left: 6px;
       }
+      .secao-dashboards {
+  margin-bottom: 20px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+  background: #f8fafc;
+}
+.secao-dashboards h3 {
+  font-size: 15px;
+  margin-bottom: 12px;
+  color: #374151;
+}
+.btns-dashboards {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.btn-dash {
+  flex: 1;
+  min-width: 160px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: white;
+  font-size: 14px;
+  background: #0f766e;
+  text-align: center;
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+.btn-dash:hover {
+  opacity: 0.85;
+}
     </style>
   </head>
   <body>
@@ -203,6 +236,15 @@
       <div id="status">Nenhuma tabela selecionada.</div>
       <div id="resultado"></div>
     </div>
+
+    <div class="secao-dashboards">
+  <h3>📊 Dashboards</h3>
+  <div class="btns-dashboards">
+    <a href="top20_autores.html" class="btn-dash">👤 Top 20 Autores</a>
+    <a href="publicacoes_por_ano.html" class="btn-dash">📅 Publicações por Ano</a>
+    <a href="palavras_chave.html" class="btn-dash">🔑 Palavras-chave</a>
+  </div>
+</div>
 
     <script>
       const SUPABASE_URL = "https://slczoexfrujtqimumrhv.supabase.co";
