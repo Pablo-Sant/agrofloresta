@@ -1,0 +1,150 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Mapa de Coautoria</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+body{margin:0;font-family:Arial;background:#f4f4f4}
+header{background:#111;color:#fff;padding:20px;display:flex;justify-content:space-between}
+header span{color:#e85d04;font-style:italic}
+.container{padding:20px}
+.card{background:#fff;padding:20px;border-radius:10px}
+#graph{height:700px;border:1px solid #ddd}
+.side{position:absolute;top:110px;right:20px;width:230px;background:#fff;padding:15px;border-radius:8px}
+.back-btn{position:absolute;left:20px;top:90px;padding:8px 14px;background:#111;color:#fff;
+text-decoration:none;border-radius:6px}
+</style>
+</head>
+<body>
+
+<a class="back-btn" href="index.html">← Voltar ao Gerenciador</a>
+
+<header>
+<div>
+<h1>Mapa de <span>Coautoria</span></h1>
+<small>Autores conectados por artigos em comum</small>
+</div>
+<div id="stats">Carregando...</div>
+</header>
+
+<div class="container">
+<div class="card">
+<svg id="graph" width="1200" height="700"></svg>
+</div>
+</div>
+
+<div class="side">
+<h3>Detalhes do Autor</h3>
+<div id="details">Clique em um autor.</div>
+</div>
+
+<script>
+const SUPABASE_URL="https://slczoexfrujtqimumrhv.supabase.co";
+const SUPABASE_KEY="sb_publishable_U_mpgcL_DwBGqXIvHcKGsg_e6FDWuHq";
+
+const MIN_ARTIGOS=2;
+const MIN_CONEXOES=2;
+
+async function carregar(){
+ const headers={apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`};
+
+ const [aR,rR]=await Promise.all([
+   fetch(`${SUPABASE_URL}/rest/v1/Authors?select=idauthor,Author`,{headers}),
+   fetch(`${SUPABASE_URL}/rest/v1/author_artigos?select=idauth,idartic`,{headers})
+ ]);
+
+ const authors=await aR.json();
+ const rel=await rR.json();
+
+ const artigos={};
+
+ rel.forEach(r=>{
+   const aid=r.idartic;
+   const au=r.idauth;
+   if(!artigos[aid]) artigos[aid]=[];
+   artigos[aid].push(au);
+ });
+
+ const edges={};
+
+ Object.values(artigos).forEach(lista=>{
+   for(let i=0;i<lista.length;i++){
+    for(let j=i+1;j<lista.length;j++){
+      const k=[lista[i],lista[j]].sort().join("-");
+      edges[k]=(edges[k]||0)+1;
+    }
+   }
+ });
+
+ const nodes=authors.map(a=>({
+    id:a.idauthor,
+    name:a.Author,
+    papers:rel.filter(r=>r.idauth===a.idauthor).length
+ }));
+
+ const links=Object.entries(edges).map(([k,w])=>{
+    const [s,t]=k.split("-");
+    return {source:s,target:t,weight:w};
+ });
+
+ const autoresValidos=new Set(
+   nodes.filter(n=>n.papers>=MIN_ARTIGOS).map(n=>n.id)
+ );
+
+ const filteredNodes=nodes.filter(n=>autoresValidos.has(n.id));
+
+ const filteredLinks=links.filter(l=>
+    autoresValidos.has(Number(l.source)) &&
+    autoresValidos.has(Number(l.target)) &&
+    l.weight>=MIN_CONEXOES
+ );
+
+ desenhar(filteredNodes,filteredLinks);
+
+ document.getElementById("stats").innerHTML=
+ `${filteredNodes.length} autores<br>${filteredLinks.length} conexões`;
+}
+
+function desenhar(nodes,links){
+ const svg=d3.select("#graph"),w=1200,h=700,color=d3.scaleOrdinal(d3.schemeCategory10);
+
+ const sim=d3.forceSimulation(nodes)
+  .force("link",d3.forceLink(links).id(d=>d.id).distance(90))
+  .force("charge",d3.forceManyBody().strength(-220))
+  .force("center",d3.forceCenter(w/2,h/2));
+
+ const link=svg.append("g").selectAll("line")
+  .data(links).enter().append("line")
+  .attr("stroke","#999")
+  .attr("stroke-width",d=>Math.sqrt(d.weight));
+
+ const node=svg.append("g").selectAll("circle")
+  .data(nodes).enter().append("circle")
+  .attr("r",d=>5+Math.sqrt(d.papers)*2)
+  .attr("fill",(d,i)=>color(i%10));
+
+ node.append("title").text(d=>`${d.name} (${d.papers} artigos)`);
+
+ node.on("click",(e,d)=>{
+   document.getElementById("details").innerHTML=
+   `<b>${d.name}</b><br>${d.papers} artigos`;
+ });
+
+ const label=svg.append("g").selectAll("text")
+   .data(nodes).enter().append("text")
+   .text(d=>d.name).style("font-size","10px");
+
+ sim.on("tick",()=>{
+   link.attr("x1",d=>d.source.x).attr("y1",d=>d.source.y)
+       .attr("x2",d=>d.target.x).attr("y2",d=>d.target.y);
+   node.attr("cx",d=>d.x).attr("cy",d=>d.y);
+   label.attr("x",d=>d.x+8).attr("y",d=>d.y+4);
+ });
+}
+
+carregar().catch(console.error);
+</script>
+</body>
+</html>

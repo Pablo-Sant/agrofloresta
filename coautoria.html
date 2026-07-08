@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Mapa de Coautoria</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f4f4f4;color:#222}
+
+  header{background:#111;color:#fff;padding:20px 24px;display:flex;justify-content:space-between;align-items:center}
+  header h1{margin:0;font-size:22px}
+  header span{color:#e85d04;font-style:italic}
+  header small{color:#bbb}
+  #stats{text-align:right;font-size:13px;line-height:1.6;color:#ddd}
+  #stats b{color:#fff;font-size:16px}
+
+  .container{padding:20px;display:flex;gap:16px;align-items:flex-start}
+  .card{background:#fff;padding:16px;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);flex:1}
+  .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;font-size:13px}
+  .toolbar button{border:1px solid #ccc;background:#fff;padding:6px 12px;border-radius:6px;cursor:pointer}
+  .toolbar button.active{background:#111;color:#fff;border-color:#111}
+
+  #graph{width:100%;height:650px;display:block}
+  .side{width:230px;background:#fff;padding:16px;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+  .side h3{margin-top:0;font-size:15px}
+  #details{font-size:13px;color:#444;line-height:1.5}
+  #status{padding:40px;text-align:center;color:#777;font-size:14px}
+  #status.error{color:#b00020}
+
+  .legend{margin-top:16px;font-size:12px;color:#555}
+  .legend div{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+  .legend span.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+
+  text.node-label{font-size:10px;fill:#333;pointer-events:none;user-select:none}
+  line.link{stroke:#999;stroke-opacity:.6}
+  circle.node{stroke:#fff;stroke-width:1px;cursor:pointer}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Mapa de <span>Coautoria</span></h1>
+    <small>Autores conectados por artigos em comum</small>
+  </div>
+  <div id="stats">Carregando...</div>
+</header>
+
+<div class="container">
+  <div class="card">
+    <div class="toolbar">
+      <span>Mínimo de artigos por autor:</span>
+      <button data-min="1">Todos</button>
+      <button data-min="2" class="active">≥ 2</button>
+      <button data-min="3">≥ 3</button>
+      <button data-min="4">≥ 4</button>
+    </div>
+    <div id="status">Carregando dados do Supabase...</div>
+    <svg id="graph" style="display:none"></svg>
+  </div>
+
+  <div class="side">
+    <h3>Detalhes do Autor</h3>
+    <div id="details">Clique em um autor no mapa.</div>
+    <div class="legend" id="legend"></div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = "https://slczoexfrujtqimumrhv.supabase.co";
+const SUPABASE_KEY = "sb_publishable_U_mpgcL_DwBGqXIvHcKGsg_e6FDWuHq";
+const color = d3.scaleOrdinal(d3.schemeCategory10);
+
+let allAuthors = [];
+let allRel = [];
+let minArtigos = 2;
+
+const statusEl = document.getElementById("status");
+const svgEl = document.getElementById("graph");
+
+function setStatus(msg, isError){
+  statusEl.style.display = "block";
+  svgEl.style.display = "none";
+  statusEl.textContent = msg;
+  statusEl.classList.toggle("error", !!isError);
+}
+
+async function carregar(){
+  setStatus("Carregando dados do Supabase...");
+  const headers = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
+
+  // As tabelas de relação (author_artigos, Article Authors etc.) estão vazias.
+  // Por isso derivamos a coautoria direto da coluna "Author(s) ID" da tabela artigos,
+  // cruzando com a mesma coluna na tabela author para identificar cada pessoa.
+  const authorSelect = encodeURI(`idauthor,Author,"Author(s) ID"`);
+  const artigosSelect = encodeURI(`id,"Author(s) ID"`);
+
+  let aRes, rRes;
+  try{
+    [aRes, rRes] = await Promise.all([
+      fetch(`${SUPABASE_URL}/rest/v1/author?select=${authorSelect}`, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/artigos?select=${artigosSelect}`, { headers })
+    ]);
+  }catch(err){
+    setStatus("Erro de rede ao contactar o Supabase: " + err.message, true);
+    return;
+  }
+
+  if(!aRes.ok || !rRes.ok){
+    const detail = !aRes.ok ? await aRes.text() : await rRes.text();
+    setStatus(`Erro do Supabase (status ${aRes.status}/${rRes.status}): ${detail}`, true);
+    return;
+  }
+
+  try{
+    allAuthors = await aRes.json();
+    allRel = await rRes.json();
+  }catch(err){
+    setStatus("Erro ao interpretar resposta do Supabase: " + err.message, true);
+    return;
+  }
+
+  if(!Array.isArray(allAuthors) || allAuthors.length === 0){
+    setStatus("Nenhum autor encontrado na tabela author.", true);
+    return;
+  }
+  if(!Array.isArray(allRel) || allRel.length === 0){
+    setStatus("Nenhum artigo encontrado na tabela artigos.", true);
+    return;
+  }
+
+  render();
+}
+
+function render(){
+  const SCOPUS_ID_COL = "Author(s) ID";
+
+  // mapa: scopus id (string) -> idauthor
+  const idMap = {};
+  allAuthors.forEach(a => {
+    const raw = a[SCOPUS_ID_COL];
+    if(!raw) return;
+    raw.split(";").map(s => s.trim()).filter(Boolean).forEach(sid => {
+      idMap[sid] = a.idauthor;
+    });
+  });
+
+  // para cada artigo, lista de idauthor únicos (via cruzamento pelos scopus ids)
+  const artigos = {};
+  allRel.forEach(r => {
+    const raw = r[SCOPUS_ID_COL];
+    if(!raw) return;
+    const ids = raw.split(";").map(s => s.trim()).filter(Boolean)
+      .map(sid => idMap[sid]).filter(id => id !== undefined);
+    if(ids.length > 0) artigos[r.id] = [...new Set(ids)];
+  });
+
+  // conta artigos por autor
+  const papersByAuthor = {};
+  Object.values(artigos).forEach(lista => {
+    lista.forEach(id => {
+      papersByAuthor[id] = (papersByAuthor[id] || 0) + 1;
+    });
+  });
+
+  // conta coautorias (arestas)
+  const edgeCount = {};
+  Object.values(artigos).forEach(lista => {
+    for(let i = 0; i < lista.length; i++){
+      for(let j = i + 1; j < lista.length; j++){
+        const a = Number(lista[i]), b = Number(lista[j]);
+        const key = a < b ? `${a}-${b}` : `${b}-${a}`;
+        edgeCount[key] = (edgeCount[key] || 0) + 1;
+      }
+    }
+  });
+
+  // nós válidos (>= minArtigos)
+  const validIds = new Set(
+    allAuthors.filter(a => (papersByAuthor[a.idauthor] || 0) >= minArtigos).map(a => a.idauthor)
+  );
+
+  const nodes = allAuthors
+    .filter(a => validIds.has(a.idauthor))
+    .map(a => ({
+      id: a.idauthor,          // número, igual ao usado nos links abaixo
+      name: a.Author,
+      papers: papersByAuthor[a.idauthor] || 0
+    }));
+
+  const links = Object.entries(edgeCount)
+    .map(([k, w]) => {
+      const [s, t] = k.split("-").map(Number);   // <-- CORRIGIDO: números, não strings
+      return { source: s, target: t, weight: w };
+    })
+    .filter(l => validIds.has(l.source) && validIds.has(l.target));
+
+  if(nodes.length === 0){
+    setStatus("Nenhum autor atende ao filtro atual. Tente reduzir o mínimo de artigos.", true);
+    return;
+  }
+
+  statusEl.style.display = "none";
+  svgEl.style.display = "block";
+
+  document.getElementById("stats").innerHTML =
+    `<b>${nodes.length}</b> autores &nbsp; <b>${links.length}</b> conexões`;
+
+  desenhar(nodes, links);
+}
+
+function desenhar(nodes, links){
+  const svg = d3.select("#graph");
+  svg.selectAll("*").remove();
+
+  const width = svgEl.clientWidth || 900;
+  const height = 650;
+  svg.attr("viewBox", `0 0 ${width} ${height}`);
+
+  const sim = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id(d => d.id).distance(80))
+    .force("charge", d3.forceManyBody().strength(-200))
+    .force("center", d3.forceCenter(width / 2, height / 2))
+    .force("collide", d3.forceCollide(d => 8 + Math.sqrt(d.papers) * 2));
+
+  const link = svg.append("g").selectAll("line")
+    .data(links).enter().append("line")
+    .attr("class", "link")
+    .attr("stroke-width", d => Math.sqrt(d.weight));
+
+  const node = svg.append("g").selectAll("circle")
+    .data(nodes).enter().append("circle")
+    .attr("class", "node")
+    .attr("r", d => 5 + Math.sqrt(d.papers) * 2)
+    .attr("fill", (d, i) => color(i % 10))
+    .call(drag(sim));
+
+  node.append("title").text(d => `${d.name} (${d.papers} artigos)`);
+
+  node.on("click", (e, d) => {
+    document.getElementById("details").innerHTML =
+      `<b>${d.name}</b><br>${d.papers} artigo(s)`;
+  });
+
+  const label = svg.append("g").selectAll("text")
+    .data(nodes).enter().append("text")
+    .attr("class", "node-label")
+    .text(d => d.name);
+
+  sim.on("tick", () => {
+    link
+      .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+      .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+    node.attr("cx", d => d.x).attr("cy", d => d.y);
+    label.attr("x", d => d.x + 8).attr("y", d => d.y + 4);
+  });
+}
+
+function drag(sim){
+  function dragstarted(event, d){
+    if(!event.active) sim.alphaTarget(0.3).restart();
+    d.fx = d.x; d.fy = d.y;
+  }
+  function dragged(event, d){ d.fx = event.x; d.fy = event.y; }
+  function dragended(event, d){
+    if(!event.active) sim.alphaTarget(0);
+    d.fx = null; d.fy = null;
+  }
+  return d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended);
+}
+
+document.querySelectorAll(".toolbar button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".toolbar button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    minArtigos = Number(btn.dataset.min);
+    render();
+  });
+});
+
+carregar();
+</script>
+</body>
+</html>
